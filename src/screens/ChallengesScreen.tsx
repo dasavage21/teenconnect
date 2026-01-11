@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 import './ChallengesScreen.css';
 
 interface Challenge {
@@ -21,13 +22,6 @@ interface UserChallenge {
   completed_at: string | null;
 }
 
-interface Profile {
-  id: string;
-  display_name: string;
-  created_at: string;
-  updated_at: string;
-}
-
 interface LeaderboardEntry {
   id: string;
   display_name: string;
@@ -37,37 +31,41 @@ interface LeaderboardEntry {
 
 const ChallengesScreen = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [userChallenges, setUserChallenges] = useState<Map<string, UserChallenge>>(new Map());
   const [loading, setLoading] = useState(true);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [userProfile, setUserProfile] = useState<LeaderboardEntry | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [displayName, setDisplayName] = useState('');
-  const [creatingProfile, setCreatingProfile] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [selectedChallenge, setSelectedChallenge] = useState<Challenge | null>(null);
   const [proofUrl, setProofUrl] = useState('');
   const [submittingProof, setSubmittingProof] = useState(false);
 
   useEffect(() => {
-    loadProfile();
-    fetchChallenges();
-    fetchAcceptedChallenges();
-    fetchLeaderboard();
-  }, []);
+    if (user) {
+      loadUserProfile();
+      fetchChallenges();
+      fetchAcceptedChallenges();
+      fetchLeaderboard();
+    }
+  }, [user]);
 
-  const loadProfile = () => {
-    const savedProfileId = localStorage.getItem('profileId');
-    const savedDisplayName = localStorage.getItem('displayName');
-    if (savedProfileId && savedDisplayName) {
-      setProfile({
-        id: savedProfileId,
-        display_name: savedDisplayName,
-        created_at: '',
-        updated_at: ''
-      });
+  const loadUserProfile = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('leaderboard')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (error) throw error;
+      setUserProfile(data);
+    } catch (error) {
+      console.error('Error loading user profile:', error);
     }
   };
 
@@ -88,17 +86,16 @@ const ChallengesScreen = () => {
   };
 
   const fetchAcceptedChallenges = async () => {
-    try {
-      const profileId = localStorage.getItem('profileId');
-      if (!profileId) {
-        setUserChallenges(new Map());
-        return;
-      }
+    if (!user) {
+      setUserChallenges(new Map());
+      return;
+    }
 
+    try {
       const { data, error } = await supabase
         .from('user_challenges')
         .select('id, challenge_id, status, proof_url, completed_at')
-        .eq('user_id', profileId);
+        .eq('user_id', user.id);
 
       if (error) throw error;
 
@@ -126,48 +123,8 @@ const ChallengesScreen = () => {
     }
   };
 
-  const handleCreateProfile = async () => {
-    if (!displayName.trim()) {
-      alert('Please enter a display name');
-      return;
-    }
-
-    setCreatingProfile(true);
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .insert({ display_name: displayName.trim() })
-        .select()
-        .single();
-
-      if (error) {
-        if (error.code === '23505') {
-          alert('This display name is already taken. Please choose another.');
-        } else {
-          throw error;
-        }
-        return;
-      }
-
-      localStorage.setItem('profileId', data.id);
-      localStorage.setItem('displayName', data.display_name);
-      setProfile(data);
-      setShowProfileModal(false);
-      setDisplayName('');
-      fetchLeaderboard();
-    } catch (error) {
-      console.error('Error creating profile:', error);
-      alert('Failed to create profile. Please try again.');
-    } finally {
-      setCreatingProfile(false);
-    }
-  };
-
   const handleAcceptChallenge = async (challengeId: string) => {
-    if (!profile) {
-      setShowProfileModal(true);
-      return;
-    }
+    if (!user) return;
 
     setAcceptingId(challengeId);
     try {
@@ -176,7 +133,7 @@ const ChallengesScreen = () => {
         .insert({
           challenge_id: challengeId,
           status: 'in_progress',
-          user_id: profile.id
+          user_id: user.id
         })
         .select()
         .single();
@@ -203,7 +160,7 @@ const ChallengesScreen = () => {
   };
 
   const handleSubmitProof = async () => {
-    if (!selectedChallenge || !profile) return;
+    if (!selectedChallenge || !user) return;
 
     const userChallenge = userChallenges.get(selectedChallenge.id);
     if (!userChallenge) return;
@@ -232,6 +189,7 @@ const ChallengesScreen = () => {
       setShowCompletionModal(false);
       setSelectedChallenge(null);
       setProofUrl('');
+      loadUserProfile();
       fetchLeaderboard();
     } catch (error) {
       console.error('Error completing challenge:', error);
@@ -292,15 +250,10 @@ const ChallengesScreen = () => {
         <div className="header-row">
           <div className="total-points-display">
             <span className="total-points-label">
-              {profile ? `${profile.display_name}'s Points:` : 'Total Points:'}
+              {userProfile ? `${userProfile.display_name}'s Points:` : 'Total Points:'}
             </span>
             <span className="total-points-value">⭐ {getTotalPoints()}</span>
           </div>
-          {!profile && (
-            <button className="create-profile-button" onClick={() => setShowProfileModal(true)}>
-              Create Profile to Compete
-            </button>
-          )}
         </div>
 
         {leaderboard.length > 0 && (
@@ -310,7 +263,7 @@ const ChallengesScreen = () => {
               {leaderboard.map((entry, index) => (
                 <div
                   key={entry.id}
-                  className={`leaderboard-item ${profile?.id === entry.id ? 'current-user' : ''}`}
+                  className={`leaderboard-item ${user?.id === entry.id ? 'current-user' : ''}`}
                 >
                   <div className="leaderboard-rank">
                     {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
@@ -387,43 +340,6 @@ const ChallengesScreen = () => {
                 </div>
               </div>
             ))}
-          </div>
-        )}
-
-        {showProfileModal && (
-          <div className="modal-overlay" onClick={() => setShowProfileModal(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <h2 className="modal-title">Create Your Profile</h2>
-              <p className="modal-description">
-                Choose a display name to join the leaderboard and compete with friends!
-              </p>
-              <input
-                type="text"
-                className="profile-input"
-                placeholder="Enter display name"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleCreateProfile()}
-                maxLength={30}
-                autoFocus
-              />
-              <div className="modal-actions">
-                <button
-                  className="modal-button cancel"
-                  onClick={() => setShowProfileModal(false)}
-                  disabled={creatingProfile}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="modal-button create"
-                  onClick={handleCreateProfile}
-                  disabled={creatingProfile || !displayName.trim()}
-                >
-                  {creatingProfile ? 'Creating...' : 'Create Profile'}
-                </button>
-              </div>
-            </div>
           </div>
         )}
 
