@@ -13,6 +13,14 @@ interface Challenge {
   created_at: string;
 }
 
+interface UserChallenge {
+  id: string;
+  challenge_id: string;
+  status: 'in_progress' | 'completed';
+  proof_url: string | null;
+  completed_at: string | null;
+}
+
 interface Profile {
   id: string;
   display_name: string;
@@ -30,7 +38,7 @@ interface LeaderboardEntry {
 const ChallengesScreen = () => {
   const navigate = useNavigate();
   const [challenges, setChallenges] = useState<Challenge[]>([]);
-  const [acceptedChallenges, setAcceptedChallenges] = useState<Set<string>>(new Set());
+  const [userChallenges, setUserChallenges] = useState<Map<string, UserChallenge>>(new Map());
   const [loading, setLoading] = useState(true);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -38,6 +46,10 @@ const ChallengesScreen = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [creatingProfile, setCreatingProfile] = useState(false);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [selectedChallenge, setSelectedChallenge] = useState<Challenge | null>(null);
+  const [proofUrl, setProofUrl] = useState('');
+  const [submittingProof, setSubmittingProof] = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -78,18 +90,25 @@ const ChallengesScreen = () => {
   const fetchAcceptedChallenges = async () => {
     try {
       const profileId = localStorage.getItem('profileId');
-      const query = supabase.from('user_challenges').select('challenge_id');
-
-      if (profileId) {
-        query.eq('user_id', profileId);
+      if (!profileId) {
+        setUserChallenges(new Map());
+        return;
       }
 
-      const { data, error } = await query;
+      const { data, error } = await supabase
+        .from('user_challenges')
+        .select('id, challenge_id, status, proof_url, completed_at')
+        .eq('user_id', profileId);
+
       if (error) throw error;
-      const acceptedIds = new Set(data?.map(uc => uc.challenge_id) || []);
-      setAcceptedChallenges(acceptedIds);
+
+      const challengesMap = new Map<string, UserChallenge>();
+      data?.forEach(uc => {
+        challengesMap.set(uc.challenge_id, uc as UserChallenge);
+      });
+      setUserChallenges(challengesMap);
     } catch (error) {
-      console.error('Error fetching accepted challenges:', error);
+      console.error('Error fetching user challenges:', error);
     }
   };
 
@@ -152,18 +171,23 @@ const ChallengesScreen = () => {
 
     setAcceptingId(challengeId);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('user_challenges')
         .insert({
           challenge_id: challengeId,
-          status: 'accepted',
+          status: 'in_progress',
           user_id: profile.id
-        });
+        })
+        .select()
+        .single();
 
       if (error) throw error;
 
-      setAcceptedChallenges(prev => new Set([...prev, challengeId]));
-      fetchLeaderboard();
+      setUserChallenges(prev => {
+        const newMap = new Map(prev);
+        newMap.set(challengeId, data as UserChallenge);
+        return newMap;
+      });
     } catch (error) {
       console.error('Error accepting challenge:', error);
       alert('Failed to accept challenge. Please try again.');
@@ -172,9 +196,57 @@ const ChallengesScreen = () => {
     }
   };
 
+  const handleCompleteChallenge = (challenge: Challenge) => {
+    setSelectedChallenge(challenge);
+    setShowCompletionModal(true);
+    setProofUrl('');
+  };
+
+  const handleSubmitProof = async () => {
+    if (!selectedChallenge || !profile) return;
+
+    const userChallenge = userChallenges.get(selectedChallenge.id);
+    if (!userChallenge) return;
+
+    setSubmittingProof(true);
+    try {
+      const { data, error } = await supabase
+        .from('user_challenges')
+        .update({
+          status: 'completed',
+          proof_url: proofUrl || 'confirmed',
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', userChallenge.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setUserChallenges(prev => {
+        const newMap = new Map(prev);
+        newMap.set(selectedChallenge.id, data as UserChallenge);
+        return newMap;
+      });
+
+      setShowCompletionModal(false);
+      setSelectedChallenge(null);
+      setProofUrl('');
+      fetchLeaderboard();
+    } catch (error) {
+      console.error('Error completing challenge:', error);
+      alert('Failed to complete challenge. Please try again.');
+    } finally {
+      setSubmittingProof(false);
+    }
+  };
+
   const getTotalPoints = () => {
     return challenges
-      .filter(challenge => acceptedChallenges.has(challenge.id))
+      .filter(challenge => {
+        const userChallenge = userChallenges.get(challenge.id);
+        return userChallenge && userChallenge.status === 'completed';
+      })
       .reduce((sum, challenge) => sum + challenge.points, 0);
   };
 
@@ -279,21 +351,39 @@ const ChallengesScreen = () => {
                 <p className="challenge-description-text">{challenge.description}</p>
                 <div className="challenge-footer">
                   <span className="challenge-points">⭐ {challenge.points} points</span>
-                  <button
-                    className="accept-button"
-                    onClick={() => handleAcceptChallenge(challenge.id)}
-                    disabled={acceptedChallenges.has(challenge.id) || acceptingId === challenge.id}
-                    style={{
-                      opacity: acceptedChallenges.has(challenge.id) ? 0.6 : 1,
-                      cursor: acceptedChallenges.has(challenge.id) ? 'default' : 'pointer'
-                    }}
-                  >
-                    {acceptingId === challenge.id
-                      ? 'Accepting...'
-                      : acceptedChallenges.has(challenge.id)
-                        ? 'Accepted ✓'
-                        : 'Accept Challenge'}
-                  </button>
+                  {(() => {
+                    const userChallenge = userChallenges.get(challenge.id);
+                    if (!userChallenge) {
+                      return (
+                        <button
+                          className="accept-button"
+                          onClick={() => handleAcceptChallenge(challenge.id)}
+                          disabled={acceptingId === challenge.id}
+                        >
+                          {acceptingId === challenge.id ? 'Accepting...' : 'Accept Challenge'}
+                        </button>
+                      );
+                    }
+                    if (userChallenge.status === 'in_progress') {
+                      return (
+                        <button
+                          className="complete-button"
+                          onClick={() => handleCompleteChallenge(challenge)}
+                        >
+                          Submit Proof
+                        </button>
+                      );
+                    }
+                    return (
+                      <button
+                        className="completed-button"
+                        disabled
+                        style={{ opacity: 0.7, cursor: 'default' }}
+                      >
+                        Completed ✓
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
             ))}
@@ -331,6 +421,50 @@ const ChallengesScreen = () => {
                   disabled={creatingProfile || !displayName.trim()}
                 >
                   {creatingProfile ? 'Creating...' : 'Create Profile'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showCompletionModal && selectedChallenge && (
+          <div className="modal-overlay" onClick={() => setShowCompletionModal(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h2 className="modal-title">Complete Challenge</h2>
+              <h3 className="challenge-name">{selectedChallenge.title}</h3>
+              <p className="modal-description">
+                Submit proof of completion to earn {selectedChallenge.points} points!
+              </p>
+              <div className="proof-options">
+                <label className="proof-label">
+                  Photo URL (optional):
+                  <input
+                    type="text"
+                    className="profile-input"
+                    placeholder="Paste image URL or leave blank to confirm"
+                    value={proofUrl}
+                    onChange={(e) => setProofUrl(e.target.value)}
+                    disabled={submittingProof}
+                  />
+                </label>
+                <p className="proof-hint">
+                  You can upload a photo to an image hosting service and paste the URL, or simply click Complete to confirm you've finished the challenge.
+                </p>
+              </div>
+              <div className="modal-actions">
+                <button
+                  className="modal-button cancel"
+                  onClick={() => setShowCompletionModal(false)}
+                  disabled={submittingProof}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="modal-button create"
+                  onClick={handleSubmitProof}
+                  disabled={submittingProof}
+                >
+                  {submittingProof ? 'Completing...' : 'Complete Challenge'}
                 </button>
               </div>
             </div>
