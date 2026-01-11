@@ -78,12 +78,6 @@ const ClubsScreen = () => {
           newSet.delete(clubId);
           return newSet;
         });
-
-        setClubs(prev => prev.map(club =>
-          club.id === clubId
-            ? { ...club, member_count: club.member_count - 1 }
-            : club
-        ));
       } else {
         const { error } = await supabase
           .from('user_clubs')
@@ -92,13 +86,21 @@ const ClubsScreen = () => {
         if (error) throw error;
 
         setUserClubs(prev => new Set([...prev, clubId]));
-
-        setClubs(prev => prev.map(club =>
-          club.id === clubId
-            ? { ...club, member_count: club.member_count + 1 }
-            : club
-        ));
       }
+
+      const { data: updatedClub, error: clubError } = await supabase
+        .from('clubs')
+        .select('member_count')
+        .eq('id', clubId)
+        .single();
+
+      if (clubError) throw clubError;
+
+      setClubs(prev => prev.map(club =>
+        club.id === clubId
+          ? { ...club, member_count: updatedClub.member_count }
+          : club
+      ));
     } catch (error) {
       console.error('Error joining/leaving club:', error);
       alert('Failed to update membership. Please try again.');
