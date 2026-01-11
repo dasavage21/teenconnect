@@ -16,10 +16,13 @@ interface Challenge {
 const ChallengesScreen = () => {
   const navigate = useNavigate();
   const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [acceptedChallenges, setAcceptedChallenges] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchChallenges();
+    fetchAcceptedChallenges();
   }, []);
 
   const fetchChallenges = async () => {
@@ -35,6 +38,38 @@ const ChallengesScreen = () => {
       console.error('Error fetching challenges:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAcceptedChallenges = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_challenges')
+        .select('challenge_id');
+
+      if (error) throw error;
+      const acceptedIds = new Set(data?.map(uc => uc.challenge_id) || []);
+      setAcceptedChallenges(acceptedIds);
+    } catch (error) {
+      console.error('Error fetching accepted challenges:', error);
+    }
+  };
+
+  const handleAcceptChallenge = async (challengeId: string) => {
+    setAcceptingId(challengeId);
+    try {
+      const { error } = await supabase
+        .from('user_challenges')
+        .insert({ challenge_id: challengeId, status: 'accepted' });
+
+      if (error) throw error;
+
+      setAcceptedChallenges(prev => new Set([...prev, challengeId]));
+    } catch (error) {
+      console.error('Error accepting challenge:', error);
+      alert('Failed to accept challenge. Please try again.');
+    } finally {
+      setAcceptingId(null);
     }
   };
 
@@ -102,7 +137,21 @@ const ChallengesScreen = () => {
                 <p className="challenge-description-text">{challenge.description}</p>
                 <div className="challenge-footer">
                   <span className="challenge-points">⭐ {challenge.points} points</span>
-                  <button className="accept-button">Accept Challenge</button>
+                  <button
+                    className="accept-button"
+                    onClick={() => handleAcceptChallenge(challenge.id)}
+                    disabled={acceptedChallenges.has(challenge.id) || acceptingId === challenge.id}
+                    style={{
+                      opacity: acceptedChallenges.has(challenge.id) ? 0.6 : 1,
+                      cursor: acceptedChallenges.has(challenge.id) ? 'default' : 'pointer'
+                    }}
+                  >
+                    {acceptingId === challenge.id
+                      ? 'Accepting...'
+                      : acceptedChallenges.has(challenge.id)
+                        ? 'Accepted ✓'
+                        : 'Accept Challenge'}
+                  </button>
                 </div>
               </div>
             ))}
