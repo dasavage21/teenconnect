@@ -43,21 +43,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        data: {
+          display_name: displayName,
+        },
+      },
     });
 
     if (error) throw error;
 
     if (data.user) {
       const { error: profileError } = await supabase
-        .from('leaderboard')
-        .insert({
+        .from('profiles')
+        .upsert({
           id: data.user.id,
           display_name: displayName,
-          total_points: 0,
-          challenges_completed: 0,
         });
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        console.error('Profile creation error:', profileError);
+      }
     }
   };
 
