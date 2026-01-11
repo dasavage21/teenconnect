@@ -73,6 +73,12 @@ const ChallengesScreen = () => {
     }
   };
 
+  const getTotalPoints = () => {
+    return challenges
+      .filter(challenge => acceptedChallenges.has(challenge.id))
+      .reduce((sum, challenge) => sum + challenge.points, 0);
+  };
+
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty.toLowerCase()) {
       case 'easy':
@@ -111,6 +117,10 @@ const ChallengesScreen = () => {
         <p className="challenges-description">
           Take on exciting challenges and compete with friends
         </p>
+        <div className="total-points-display">
+          <span className="total-points-label">Total Points:</span>
+          <span className="total-points-value">⭐ {getTotalPoints()}</span>
+        </div>
 
         {loading ? (
           <div className="loading">Loading challenges...</div>
