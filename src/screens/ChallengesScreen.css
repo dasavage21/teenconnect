@@ -192,6 +192,198 @@
   transform: translateY(0);
 }
 
+.header-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.create-profile-button {
+  padding: 20px 32px;
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
+}
+
+.create-profile-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 25px rgba(16, 185, 129, 0.4);
+}
+
+.leaderboard-section {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  padding: 32px;
+  margin-bottom: 40px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+}
+
+.leaderboard-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #2d3748;
+  margin-bottom: 24px;
+}
+
+.leaderboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.leaderboard-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: white;
+  border-radius: 12px;
+  border: 2px solid #e5e7eb;
+  transition: all 0.2s;
+}
+
+.leaderboard-item:hover {
+  border-color: #9ca3af;
+  transform: translateX(4px);
+}
+
+.leaderboard-item.current-user {
+  border-color: #f59e0b;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+}
+
+.leaderboard-rank {
+  font-size: 24px;
+  font-weight: 700;
+  min-width: 48px;
+  text-align: center;
+}
+
+.leaderboard-name {
+  flex: 1;
+  font-size: 18px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.leaderboard-stats {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.leaderboard-points {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f59e0b;
+}
+
+.leaderboard-challenges {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  background: white;
+  border-radius: 16px;
+  padding: 40px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.modal-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #2d3748;
+  margin-bottom: 12px;
+}
+
+.modal-description {
+  font-size: 16px;
+  color: #6b7280;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.profile-input {
+  width: 100%;
+  padding: 16px;
+  font-size: 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  transition: border-color 0.2s;
+}
+
+.profile-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.modal-button {
+  padding: 12px 24px;
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modal-button.cancel {
+  color: #6b7280;
+  background: #f3f4f6;
+}
+
+.modal-button.cancel:hover {
+  background: #e5e7eb;
+}
+
+.modal-button.create {
+  color: white;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.modal-button.create:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.modal-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @media (max-width: 768px) {
   .challenges-title {
     font-size: 36px;
@@ -208,5 +400,38 @@
 
   .challenges-grid {
     grid-template-columns: 1fr;
+  }
+
+  .header-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .total-points-display {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .create-profile-button {
+    width: 100%;
+  }
+
+  .leaderboard-section {
+    padding: 24px;
+  }
+
+  .leaderboard-item {
+    flex-wrap: wrap;
+  }
+
+  .leaderboard-stats {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    width: 100%;
+  }
+
+  .modal-content {
+    padding: 32px 24px;
   }
 }

@@ -13,17 +13,51 @@ interface Challenge {
   created_at: string;
 }
 
+interface Profile {
+  id: string;
+  display_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface LeaderboardEntry {
+  id: string;
+  display_name: string;
+  total_points: number;
+  challenges_completed: number;
+}
+
 const ChallengesScreen = () => {
   const navigate = useNavigate();
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [acceptedChallenges, setAcceptedChallenges] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [displayName, setDisplayName] = useState('');
+  const [creatingProfile, setCreatingProfile] = useState(false);
 
   useEffect(() => {
+    loadProfile();
     fetchChallenges();
     fetchAcceptedChallenges();
+    fetchLeaderboard();
   }, []);
+
+  const loadProfile = () => {
+    const savedProfileId = localStorage.getItem('profileId');
+    const savedDisplayName = localStorage.getItem('displayName');
+    if (savedProfileId && savedDisplayName) {
+      setProfile({
+        id: savedProfileId,
+        display_name: savedDisplayName,
+        created_at: '',
+        updated_at: ''
+      });
+    }
+  };
 
   const fetchChallenges = async () => {
     try {
@@ -43,10 +77,14 @@ const ChallengesScreen = () => {
 
   const fetchAcceptedChallenges = async () => {
     try {
-      const { data, error } = await supabase
-        .from('user_challenges')
-        .select('challenge_id');
+      const profileId = localStorage.getItem('profileId');
+      const query = supabase.from('user_challenges').select('challenge_id');
 
+      if (profileId) {
+        query.eq('user_id', profileId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       const acceptedIds = new Set(data?.map(uc => uc.challenge_id) || []);
       setAcceptedChallenges(acceptedIds);
@@ -55,16 +93,77 @@ const ChallengesScreen = () => {
     }
   };
 
+  const fetchLeaderboard = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('leaderboard')
+        .select('*')
+        .limit(10);
+
+      if (error) throw error;
+      setLeaderboard(data || []);
+    } catch (error) {
+      console.error('Error fetching leaderboard:', error);
+    }
+  };
+
+  const handleCreateProfile = async () => {
+    if (!displayName.trim()) {
+      alert('Please enter a display name');
+      return;
+    }
+
+    setCreatingProfile(true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .insert({ display_name: displayName.trim() })
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === '23505') {
+          alert('This display name is already taken. Please choose another.');
+        } else {
+          throw error;
+        }
+        return;
+      }
+
+      localStorage.setItem('profileId', data.id);
+      localStorage.setItem('displayName', data.display_name);
+      setProfile(data);
+      setShowProfileModal(false);
+      setDisplayName('');
+      fetchLeaderboard();
+    } catch (error) {
+      console.error('Error creating profile:', error);
+      alert('Failed to create profile. Please try again.');
+    } finally {
+      setCreatingProfile(false);
+    }
+  };
+
   const handleAcceptChallenge = async (challengeId: string) => {
+    if (!profile) {
+      setShowProfileModal(true);
+      return;
+    }
+
     setAcceptingId(challengeId);
     try {
       const { error } = await supabase
         .from('user_challenges')
-        .insert({ challenge_id: challengeId, status: 'accepted' });
+        .insert({
+          challenge_id: challengeId,
+          status: 'accepted',
+          user_id: profile.id
+        });
 
       if (error) throw error;
 
       setAcceptedChallenges(prev => new Set([...prev, challengeId]));
+      fetchLeaderboard();
     } catch (error) {
       console.error('Error accepting challenge:', error);
       alert('Failed to accept challenge. Please try again.');
@@ -117,10 +216,43 @@ const ChallengesScreen = () => {
         <p className="challenges-description">
           Take on exciting challenges and compete with friends
         </p>
-        <div className="total-points-display">
-          <span className="total-points-label">Total Points:</span>
-          <span className="total-points-value">⭐ {getTotalPoints()}</span>
+
+        <div className="header-row">
+          <div className="total-points-display">
+            <span className="total-points-label">
+              {profile ? `${profile.display_name}'s Points:` : 'Total Points:'}
+            </span>
+            <span className="total-points-value">⭐ {getTotalPoints()}</span>
+          </div>
+          {!profile && (
+            <button className="create-profile-button" onClick={() => setShowProfileModal(true)}>
+              Create Profile to Compete
+            </button>
+          )}
         </div>
+
+        {leaderboard.length > 0 && (
+          <div className="leaderboard-section">
+            <h2 className="leaderboard-title">Leaderboard</h2>
+            <div className="leaderboard-list">
+              {leaderboard.map((entry, index) => (
+                <div
+                  key={entry.id}
+                  className={`leaderboard-item ${profile?.id === entry.id ? 'current-user' : ''}`}
+                >
+                  <div className="leaderboard-rank">
+                    {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
+                  </div>
+                  <div className="leaderboard-name">{entry.display_name}</div>
+                  <div className="leaderboard-stats">
+                    <span className="leaderboard-points">⭐ {entry.total_points}</span>
+                    <span className="leaderboard-challenges">{entry.challenges_completed} challenges</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="loading">Loading challenges...</div>
@@ -165,6 +297,43 @@ const ChallengesScreen = () => {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {showProfileModal && (
+          <div className="modal-overlay" onClick={() => setShowProfileModal(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h2 className="modal-title">Create Your Profile</h2>
+              <p className="modal-description">
+                Choose a display name to join the leaderboard and compete with friends!
+              </p>
+              <input
+                type="text"
+                className="profile-input"
+                placeholder="Enter display name"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleCreateProfile()}
+                maxLength={30}
+                autoFocus
+              />
+              <div className="modal-actions">
+                <button
+                  className="modal-button cancel"
+                  onClick={() => setShowProfileModal(false)}
+                  disabled={creatingProfile}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="modal-button create"
+                  onClick={handleCreateProfile}
+                  disabled={creatingProfile || !displayName.trim()}
+                >
+                  {creatingProfile ? 'Creating...' : 'Create Profile'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
